@@ -6,6 +6,7 @@ output "sql_warehouse_id" {
 output "sql_warehouse_jdbc_url" {
   description = "JDBC URL for connecting to the SQL warehouse (if created)"
   value       = var.create_warehouse ? databricks_sql_endpoint.calcom_warehouse[0].jdbc_url : null
+  sensitive   = true
 }
 
 output "catalog_name" {

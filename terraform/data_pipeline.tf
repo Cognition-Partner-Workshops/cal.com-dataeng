@@ -1,5 +1,6 @@
 resource "databricks_secret_scope" "calcom" {
-  name = "calcom-postgres-credentials"
+  name                     = "calcom-postgres-credentials"
+  initial_manage_principal = "users"
 }
 
 resource "databricks_secret" "postgres_host" {
