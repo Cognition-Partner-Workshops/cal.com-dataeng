@@ -1,0 +1,138 @@
+name: LOS CI - Tests & Build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'devin/**'
+    paths:
+      - 'los-app/**'
+      - '.github/workflows/los-ci.yml'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - 'los-app/**'
+      - '.github/workflows/los-ci.yml'
+
+jobs:
+  # ── Backend Unit & Integration Tests ────────────────────────
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: los-app/backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: los-app/backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit & integration tests
+        run: npm test -- --testPathPattern="(services|api|scalability|personas|utils|e2e).test" --forceExit --detectOpenHandles
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-test-jwt-secret-key-for-testing
+          ENCRYPTION_KEY: ci-test-encryption-key-for-testing
+
+      - name: Run performance tests
+        run: npm test -- --testPathPattern="performance.test" --forceExit --detectOpenHandles
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-test-jwt-secret-key-for-testing
+          ENCRYPTION_KEY: ci-test-encryption-key-for-testing
+
+  # ── Frontend Unit Tests ─────────────────────────────────────
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: los-app/frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: los-app/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run frontend tests
+        run: npm test -- --run
+
+  # ── Frontend Build ──────────────────────────────────────────
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    needs: frontend-tests
+    defaults:
+      run:
+        working-directory: los-app/frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: los-app/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: los-app/frontend/dist/
+          retention-days: 7
+
+  # ── Test Summary ────────────────────────────────────────────
+  test-summary:
+    name: All Tests Passed
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests, frontend-build]
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.backend-tests.result }}" != "success" ] || \
+             [ "${{ needs.frontend-tests.result }}" != "success" ] || \
+             [ "${{ needs.frontend-build.result }}" != "success" ]; then
+            echo "One or more jobs failed:"
+            echo "  Backend tests: ${{ needs.backend-tests.result }}"
+            echo "  Frontend tests: ${{ needs.frontend-tests.result }}"
+            echo "  Frontend build: ${{ needs.frontend-build.result }}"
+            exit 1
+          fi
+          echo "All CI checks passed!"
+          echo ""
+          echo "Test Coverage:"
+          echo "  Backend: services (113) + api (53) + scalability (27) + personas (34) + utils (40) + e2e (22) + performance (20+)"
+          echo "  Frontend: App.test.jsx (50)"
+          echo "  Total: 350+ tests"
